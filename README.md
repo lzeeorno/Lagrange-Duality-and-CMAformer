@@ -52,7 +52,7 @@ pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 torchaudio==2.0.1+cu118
   - 1. Change 'default=True' in 'parser.add_argument('--pretrained', default=False, type=str2bool)'
   - 2. Change 'pretrained_path= "./your_pretrained_file_path"' after 'if args.model_name == 'CMAformer':'
 
-## 3. Train the CMA-Former
+## 3. Train the CMAformer
 ```bash
 cd ./train/
 python train_lits2017_png.py 
