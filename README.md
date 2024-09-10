@@ -28,7 +28,7 @@ pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 torchaudio==2.0.1+cu118
 ### LiTS2017 datasets
 - The LiTS2017 datasets can be downloaded here: {[LiTS2017](https://competitions.codalab.org/competitions/17094)}. 
 
-- After downloading the datasets, you should run ./data_prepare/preprocess_lits2017_png.py to convert .nii files into .png files for training.(Save the downloaded LiTS2017 datasets in the data folder in the following format.)
+- After downloading the datasets, you should run ./data_prepare/preprocess_lits2017_png.py to convert .nii files into .png files for training. (Save the downloaded LiTS2017 datasets in the data folder in the following format.)
 
 - './data_prepare/'
   - preprocess_lits2017_png.py
@@ -42,6 +42,9 @@ pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 torchaudio==2.0.1+cu118
       - .png
   - trainImage_lits2017_png
       - .png
+
+### Other datasets
+- Other datasets just similar to LiTS2017
 
 ## 2. Prepare the pre_trained weights
 - The weights of the pre-trained CMAformer could be downloaded [here](). After that, the pre-trained weights should be stored in './pretrained_weights/'.
@@ -60,7 +63,7 @@ python train_lits2017_png.py
 
   
 # 🧧 Acknowledgement
-
+This work was supported in part by the National Key R\&D Project of China (2018YFA0704102, 2018YFA0704104), in part by Natural Science Foundation of Guangdong Province (No. 2023A1515010673), and in part by Shenzhen Technology Innovation Commission (No. JSGG20220831110400001), in part by Shenzhen Development and Reform Commission (No. XMHT20220104009), in part by the Science and Technology Development Fund, Macau SAR, under Grant 0141/2023/RIA2 and 0193/2023/RIA3.
 
 # 🛎 Citation
 
