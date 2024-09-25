@@ -47,7 +47,7 @@ pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 torchaudio==2.0.1+cu118
 - Other datasets just similar to LiTS2017
 
 ## 2. Prepare the pre_trained weights
-- The weights of the pre-trained CMAformer could be downloaded [here](). After that, the pre-trained weights should be stored in './pretrained_weights/'.
+- The weights of the pre-trained CMAformer could be downloaded [here](https://pan.baidu.com/s/1ffJAongXRjzj0aez3IWM1Q?pwd=5y68). After that, the pre-trained weights should be stored in './pretrained_weights/'.
 - To use pre-trained file, you should change 2 places in './train/train_lits2017_png.py'
   - 1. Change 'default=True' in 'parser.add_argument('--pretrained', default=False, type=str2bool)'
   - 2. Change 'pretrained_path= "./your_pretrained_file_path"' after 'if args.model_name == 'CMAformer':'
