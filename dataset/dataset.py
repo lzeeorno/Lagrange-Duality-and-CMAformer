@@ -42,22 +42,23 @@ class Dataset_ssl_lits2017_png_unlabeled(torch.utils.data.Dataset):
         self.args = args
         self.img_paths = img_paths
         self.transform = transform
+        self.palette = lits_palette
+        self.num_classes = lits_num_classes
 
     def __len__(self):
         return len(self.img_paths)
 
     def __getitem__(self, idx):
         img_path = self.img_paths[idx]
+        ct = Image.open(img_path)
+        npimage = np.array(ct)
 
-        #load npy file
-        npimage = np.load(img_path, allow_pickle=True)
-        #(3,512,512) -> (512,512,3)
-        npimage = npimage.transpose((2, 0, 1))
-        npimage = np.abs(npimage.astype("complex64"))
-        # print("ct.size:{}".format(npimage.shape))
-        # print("seg.size:{}".format(nplabel.shape))
-        # exit()
+        npimage = np.expand_dims(npimage, axis=2)   #[512,512,1]
+        npimage = npimage.transpose([2, 0, 1])
+        npimage = npimage.astype("float32")
+
         return npimage
+
 
 class Dataset_ssl_lits2017_png(torch.utils.data.Dataset):
 
