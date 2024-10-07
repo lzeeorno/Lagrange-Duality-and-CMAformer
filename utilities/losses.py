@@ -9,6 +9,21 @@ try:
 except ImportError:
     pass
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+# class MSELoss(nn.Module):
+#     def __init__(self):
+#         super(MSELoss, self).__init__()
+#
+#     def forward(self, input, target):
+#         # 使用均方误差（MSE）损失
+#         mse_loss = F.mse_loss(input, target)
+#
+#         return mse_loss
+
 
 class BCEDiceLoss_lits2017(nn.Module):
     def __init__(self):
@@ -46,32 +61,36 @@ class BCEDiceLoss_lits2017(nn.Module):
 
         return bce + mean_dice
 
-
-class newBCEDiceLoss(nn.Module):
+'''
+Lagrange Duality Consistency (LDC) Loss
+'''
+class LDC_BCEDiceLoss_lits2017(nn.Module):
     def __init__(self):
-        super(newBCEDiceLoss, self).__init__()
+        super(LDC_BCEDiceLoss_lits2017, self).__init__()
 
-    def forward(self, input, target):
-        # input = torch.sigmoid(input)
-        # 将灰度图自动加入one-hot 编码,但是如果你已经手动加入了就会导致[10, 3, 512, 512]->[10, 3, 512, 512, 3]
-        # target_onehot = F.one_hot(target.long(), num_classes=3)  # [6, 3, 512, 512]
-        # print(input.shape, target.shape)
-        # print(target_onehot.shape)
-        # quit()
+    def forward(self, input, target,lmbda):
+        alpha = 0.3  # BCE 权重
+        beta = 0.5  # Dice 权重
+        gamma = 0.2  # MSE 权重
+
         bce = F.binary_cross_entropy_with_logits(input, target)
+        mse = F.mse_loss(input, target)
+
         smooth = 1e-5
         l2_reg = 0.9989
-        input = torch.sigmoid(input)
+        # Apply sigmoid to get Lagrange Dual probabilities
+        input_sigmoid = torch.sigmoid(input)
         num = target.size(0)
 
-        input_1 = input[:,1,:,:]
-        input_2 = input[:,2,:,:]
+        # Separate the classes
+        input_1 = input_sigmoid[:,1,:,:]
+        input_2 = input_sigmoid[:,2,:,:]
         target_1 = target[:,1,:,:]
         target_2 = target[:,2,:,:]
 
+        # Flatten tensors
         input_1 = input_1.view(num, -1)
         input_2 = input_2.view(num, -1)
-
         target_1 = target_1.view(num, -1)
         target_2 = target_2.view(num, -1)
 
@@ -86,8 +105,15 @@ class newBCEDiceLoss(nn.Module):
 
         # mean_dice = (dice_1+dice_2)/2.0
         mean_dice = dice_1*l2_reg*math.pi*0.1 + dice_2*(1-l2_reg*math.pi*0.1)
+        # Constraint: Mean prediction should match mean target
+        constraint = torch.mean(input_sigmoid) - torch.mean(target)
         # bce_dice_loss = bce - torch.log(mean_dice)
-        return bce + mean_dice
+        # Lagrangian Loss
+        LDC_BCEDiceLoss = alpha * bce + beta * mean_dice + lmbda * constraint
+        #LDC_BCEDiceLoss + MSE loss
+        Consistency_loss = LDC_BCEDiceLoss + gamma * mse
+
+        return Consistency_loss, constraint.detach()
 
 
 class BCEDiceLoss_synapse(nn.Module):
@@ -132,10 +158,46 @@ class LovaszHingeLoss(nn.Module):
         return loss
 
 
+'''
+Contrastive Loss base on
+InfoNCE loss
+'''
+class Contrastive_InfoNCE_Loss(nn.Module):
+    def __init__(self, temperature=0.07, weight=1.0):
+        super(Contrastive_InfoNCE_Loss, self).__init__()
+        self.temperature = temperature
+        self.weight = weight
 
-class ContrastiveLoss(nn.Module):
+    def forward(self, labeled_features, unlabeled_features):
+
+        # Flatten the feature maps
+        labeled_features = labeled_features.view(labeled_features.size(0), -1)
+        unlabeled_features = unlabeled_features.view(unlabeled_features.size(0), -1)
+
+        # Normalize the feature maps
+        labeled_features = F.normalize(labeled_features, p=2, dim=1)
+        unlabeled_features = F.normalize(unlabeled_features, p=2, dim=1)
+
+        # Compute similarity scores (logits)
+        logits = torch.mm(unlabeled_features, labeled_features.t()) / self.temperature  # B x B
+
+        # Create labels (positive samples on the diagonal)
+        labels = torch.arange(logits.size(0)).to(logits.device)
+
+        # Compute the InfoNCE loss
+        contrastive_loss = F.cross_entropy(logits, labels)
+
+        return contrastive_loss * self.weight
+
+
+
+'''
+Contrastive loss base on 
+Euclidean distance
+'''
+class Contrastive_Euclidean_Loss(nn.Module):
     def __init__(self, margin=1.0, weight=1.0):
-        super(ContrastiveLoss, self).__init__()
+        super(Contrastive_Euclidean_Loss, self).__init__()
         self.margin = margin
         self.weight = weight
 
