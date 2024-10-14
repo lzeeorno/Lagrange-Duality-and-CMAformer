@@ -646,7 +646,16 @@ def main():
                 train_log['tot_loss'],
                 train_log['dice_1'],
                 train_log['dice_2'],
-            ], index=['epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2'])
+                # train_log['HD95'],
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+            ], index=['epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2',
+                      'val_loss', 'val_ContrastiveLoss','val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2', 'HD95_avg'])
 
             log = log._append(tmp, ignore_index=True)
             log.to_csv('../trained_models/SSL/{}_{}/{}/{}_{}_{}_batchsize_{}.csv'.format(args.dataset, args.model_name, timestamp,
