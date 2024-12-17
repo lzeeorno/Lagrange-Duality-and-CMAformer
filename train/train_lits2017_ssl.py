@@ -178,6 +178,8 @@ def train(args, train_loader, train_loader_unlabeled, model, criterion, Contrast
 
     for i, ((ct_labeled, mask_labeled), ct_unlabeled) in tqdm(enumerate(zip(train_loader, train_loader_unlabeled)),
                                                               total=len(train_loader)):
+        # Compute gradient and do optimizing step
+        optimizer.zero_grad()
         ct_labeled = ct_labeled.cuda()
         mask_labeled = mask_labeled.cuda()
         ct_unlabeled = ct_unlabeled.cuda()
@@ -237,13 +239,7 @@ def train(args, train_loader, train_loader_unlabeled, model, criterion, Contrast
         #     scaler.step(optimizer)
         #     scaler.update()
         #     optimizer.zero_grad(set_to_none=True)
-        # Compute gradient and do optimizing step
-        optimizer.zero_grad()
         tot_loss.backward()
-
-        # 梯度裁剪
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
         optimizer.step()
         # 更新拉格朗日乘子
         lambda_value += alpha * Lagrange_constraint.item()
