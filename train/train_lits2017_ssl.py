@@ -18,7 +18,7 @@ from skimage.io import imread
 
 import torch
 import torch.nn as nn
-from torchsummary import summary
+# from torchsummary import summary
 
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -60,7 +60,7 @@ def parse_args():
                         choices=['Unet', 'AttUnet', 'res_unet_plus', 'R2Unet', 'R2AttU_Net', 'sepnet', 'KiU_Net',
                                  'Unet3D', 'CMAformer'])
     # pre trained
-    parser.add_argument('--pretrained', default=True, type=str2bool)
+    parser.add_argument('--pretrained', default=False, type=str2bool)
     # dataset name on log record
     parser.add_argument('--dataset', default="LiTS2017",
                         help='dataset name')
@@ -79,10 +79,10 @@ def parse_args():
     parser.add_argument('--early-stop', default=500, type=int,
                         metavar='N', help='early stopping (default: 30)')
     parser.add_argument('--gamma', default=1.0, type=float)
-    parser.add_argument('-b', '--batch_size', default=10, type=int,
+    parser.add_argument('-b', '--batch_size', default=28, type=int,
                         metavar='N', help='mini-batch size (default: set below 10 in 1 NVIDIA4090 if using Large model)')
-    parser.add_argument('--optimizer', default='SGD',
-                        choices=['Adam', 'SGD'])
+    parser.add_argument('--optimizer', default='AdamW',
+                        choices=['Adam', 'SGD','AdamW'])
     parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                         metavar='LR', help='initial learning rate, Resunet=1e-4, R2Unet=1e-5, Unet=1e-2')
     parser.add_argument('--momentum', default=0.98, type=float,
@@ -98,23 +98,21 @@ def parse_args():
     return args
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
+class AverageMeter:
     def __init__(self):
         self.reset()
 
     def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
+        self.val = torch.tensor(0.0).cuda()
+        self.sum = torch.tensor(0.0).cuda()
+        self.count = torch.tensor(0.0).cuda()
 
     def update(self, val, n=1):
         self.val = val
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
 
 def load_state_dict(model, state_dict, prefix='', ignore_missing="relative_position_index"):
     missing_keys = []
@@ -178,12 +176,12 @@ def train(args, train_loader, train_loader_unlabeled, model, criterion, Contrast
 
     for i, ((ct_labeled, mask_labeled), ct_unlabeled) in tqdm(enumerate(zip(train_loader, train_loader_unlabeled)),
                                                               total=len(train_loader)):
-        # Compute gradient and do optimizing step
-        optimizer.zero_grad()
         ct_labeled = ct_labeled.cuda()
         mask_labeled = mask_labeled.cuda()
         ct_unlabeled = ct_unlabeled.cuda()
-
+        # compute gradient and do optimizing step
+        # Before backward, use opt change all variable's loss = 0, b/c gradient will accumulate
+        optimizer.zero_grad()
         # Check for NaNs in inputs
         if torch.isnan(ct_labeled).any() or torch.isnan(mask_labeled).any() or torch.isnan(ct_unlabeled).any():
             print("Input contains NaN")
@@ -239,6 +237,7 @@ def train(args, train_loader, train_loader_unlabeled, model, criterion, Contrast
         #     scaler.step(optimizer)
         #     scaler.update()
         #     optimizer.zero_grad(set_to_none=True)
+        # Compute gradient and do optimizing step
         tot_loss.backward()
         optimizer.step()
         # 更新拉格朗日乘子
@@ -274,7 +273,7 @@ def validate(args, val_loader, model, val_criterion, ContrastiveLoss, lambda_val
     ious = AverageMeter()
     dices_1s = AverageMeter()
     dices_2s = AverageMeter()
-    hd95_s = AverageMeter()
+    # hd95_s = AverageMeter()
     contrastives = AverageMeter()
     tot_losses = AverageMeter()
 
@@ -290,7 +289,7 @@ def validate(args, val_loader, model, val_criterion, ContrastiveLoss, lambda_val
             pred_labeled = model(ct_labeled)
             loss_labeled, Lagrange_constraint = val_criterion(pred_labeled, mask_labeled, lambda_value)
             iou = iou_score(pred_labeled, mask_labeled)
-            hd95 = hd95_2d(pred_labeled, mask_labeled)
+            # hd95 = hd95_2d(pred_labeled, mask_labeled)
 
             if args.semiSupervised == True:
                 # Here, we assume unlabeled data is also passed in the validation loader
@@ -312,7 +311,7 @@ def validate(args, val_loader, model, val_criterion, ContrastiveLoss, lambda_val
             losses.update(loss_labeled.item(), ct_labeled.size(0))
             tot_losses.update(tot_loss.item(), ct_labeled.size(0))
             ious.update(iou, ct_labeled.size(0))
-            hd95_s.update(torch.tensor(hd95), ct_labeled.size(0))
+            # hd95_s.update(torch.tensor(hd95), ct_labeled.size(0))
             dices_1s.update(torch.tensor(dice_1), ct_labeled.size(0))
             dices_2s.update(torch.tensor(dice_2), ct_labeled.size(0))
 
@@ -321,7 +320,7 @@ def validate(args, val_loader, model, val_criterion, ContrastiveLoss, lambda_val
                 ('ContrastiveLoss', contrastives.avg),
                 ('tot_loss', tot_losses.avg),
                 ('iou', ious.avg),
-                ('HD95_avg', hd95_s.avg),
+                # ('HD95_avg', hd95_s.avg),
                 ('dice_1', dices_1s.avg),
                 ('dice_2', dices_2s.avg),
             ])
@@ -372,8 +371,8 @@ def main():
         mask_paths = glob('../data/train_mask3D/*')
     else:
         # Data loading code
-        img_paths = glob('../data/trainImage_lits2017_png/*')
-        mask_paths = glob('../data/trainMask_lits2017_png/*')
+        img_paths = glob('../data/testImage_lits2017_png/*')
+        mask_paths = glob('../data/testMask_lits2017_png/*')
 
     '''
     1. divide dataset into train and validation sets
@@ -426,17 +425,20 @@ def main():
 
     print('{} parameters:{}'.format(args.model_name, count_params(model)))
     if args.optimizer == 'Adam':
-        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
                                      betas=(0.9, 0.999),
                                      weight_decay=args.weight_decay)
-        print('AdamW optimizer loaded!')
-        # optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
-        #                              betas=(0.9, 0.999),
-        #                              weight_decay=args.weight_decay)
+        print('Adam optimizer loaded!')
     elif args.optimizer == 'SGD':
         optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
                                     momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
         print('SGD optimizer loaded!')
+    elif args.optimizer == 'AdamW':
+        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr,
+                                     betas=(0.9, 0.999),
+                                     weight_decay=args.weight_decay)
+        print('AdamW optimizer loaded!')
+
 
     # update learning rate（Adam can auto change lr by betas
     lr_decay_list = []
@@ -476,27 +478,25 @@ def main():
         A.Sharpen(alpha=(0.04 * level, 0.1 * level), lightness=(1, 1), p=0.2 * level),
         A.GaussianBlur(blur_limit=(3, make_odd(3 + 0.8 * level)), p=min(0.2 * level, 1)),
         A.GaussNoise(var_limit=(2 * level, 10 * level), mean=0, per_channel=True, p=0.2 * level),
-        A.Rotate(limit=4 * level, interpolation=1, border_mode=0, value=0, mask_value=None, rotate_method='largest_box',
-                 crop_border=False, p=0.2 * level),
+        A.Rotate(limit=4 * level, interpolation=1, border_mode=0, value=0, mask_value=None, p=0.2 * level),
         A.HorizontalFlip(p=0.2 * level),
         A.VerticalFlip(p=0.2 * level),
         A.Affine(scale=(1 - 0.04 * level, 1 + 0.04 * level), translate_percent=None, translate_px=None, rotate=None,
-                 shear=None, interpolation=1, mask_interpolation=0, cval=0, cval_mask=0, mode=0, fit_output=False,
-                 keep_ratio=True, p=0.2 * level),
+                 shear=None, interpolation=1, cval=0, cval_mask=0, mode=0, fit_output=False, p=0.2 * level),
         A.Affine(scale=None, translate_percent=None, translate_px=None, rotate=None,
                  shear={'x': (0, 2 * level), 'y': (0, 0)}
-                 , interpolation=1, mask_interpolation=0, cval=0, cval_mask=0, mode=0, fit_output=False,
-                 keep_ratio=True, p=0.2 * level),  # x
+                 , interpolation=1, cval=0, cval_mask=0, mode=0, fit_output=False,
+                 p=0.2 * level),  # x
         A.Affine(scale=None, translate_percent=None, translate_px=None, rotate=None,
                  shear={'x': (0, 0), 'y': (0, 2 * level)}
-                 , interpolation=1, mask_interpolation=0, cval=0, cval_mask=0, mode=0, fit_output=False,
-                 keep_ratio=True, p=0.2 * level),
+                 , interpolation=1, cval=0, cval_mask=0, mode=0, fit_output=False,
+                 p=0.2 * level),
         A.Affine(scale=None, translate_percent={'x': (0, 0.02 * level), 'y': (0, 0)}, translate_px=None, rotate=None,
-                 shear=None, interpolation=1, mask_interpolation=0, cval=0, cval_mask=0, mode=0, fit_output=False,
-                 keep_ratio=True, p=0.2 * level),
+                 shear=None, interpolation=1, cval=0, cval_mask=0, mode=0, fit_output=False,
+                 p=0.2 * level),
         A.Affine(scale=None, translate_percent={'x': (0, 0), 'y': (0, 0.02 * level)}, translate_px=None, rotate=None,
-                 shear=None, interpolation=1, mask_interpolation=0, cval=0, cval_mask=0, mode=0, fit_output=False,
-                 keep_ratio=True, p=0.2 * level),
+                 shear=None, interpolation=1, cval=0, cval_mask=0, mode=0, fit_output=False,
+                 p=0.2 * level),
         A.OneOf([
             A.ElasticTransform(alpha=0.1 * level, sigma=0.25 * level, alpha_affine=0.25 * level, p=0.1),
             A.GridDistortion(distort_limit=0.05 * level, p=0.1),
@@ -546,7 +546,7 @@ def main():
 
     log = pd.DataFrame(index=[], columns=[
         'epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2',
-        'val_loss', 'val_ContrastiveLoss', 'val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2', 'HD95_avg'
+        'val_loss', 'val_ContrastiveLoss', 'val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2'
     ])
     best_loss = 100
     best_train_loss = 100
@@ -586,27 +586,26 @@ def main():
             print("=> Start Validation...")
             val_trigger = False
             val_log = validate(args, val_loader, model, val_criterion, ContrastiveLoss, lambda_value)
-            print('lr %.8f - val_loss %.4f - val_ContrastiveLoss %.4f - val_tot_loss %.4f - val_iou %.4f - val_dice_1 %.4f - val_dice_2 %.4f - val_HD95_avg %.4f'
-                  % (train_log['lr'], val_log['loss'], val_log['ContrastiveLoss'], val_log['tot_loss'], val_log['iou'], val_log['dice_1'], val_log['dice_2'], val_log['HD95_avg']))
+            print('lr %.8f - val_loss %.4f - val_ContrastiveLoss %.4f - val_tot_loss %.4f - val_iou %.4f - val_dice_1 %.4f - val_dice_2 %.4f'
+                  % (train_log['lr'], val_log['loss'], val_log['ContrastiveLoss'], val_log['tot_loss'], val_log['iou'], val_log['dice_1'], val_log['dice_2']))
 
             tmp = pd.Series([
                 epoch,
                 train_log['lr'],
-                train_log['loss'],
-                train_log['ContrastiveLoss'],
-                train_log['tot_loss'],
-                train_log['dice_1'],
-                train_log['dice_2'],
+                train_log['loss'].cpu().item(),
+                train_log['ContrastiveLoss'].cpu().item(),
+                train_log['tot_loss'].cpu().item(),
+                train_log['dice_1'].cpu().item(),
+                train_log['dice_2'].cpu().item(),
                 # train_log['HD95'],
-                val_log['loss'],
-                val_log['ContrastiveLoss'],
-                val_log['tot_loss'],
-                val_log['iou'],
-                val_log['dice_1'],
-                val_log['dice_2'],
-                val_log['HD95_avg'],
+                val_log['loss'].cpu().item(),
+                val_log['ContrastiveLoss'].cpu().item(),
+                val_log['tot_loss'].cpu().item(),
+                val_log['iou'].cpu().item(),
+                val_log['dice_1'].cpu().item(),
+                val_log['dice_2'].cpu().item(),
             ], index=['epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2',
-                      'val_loss', 'val_ContrastiveLoss','val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2', 'HD95_avg'])
+                      'val_loss', 'val_ContrastiveLoss','val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2'])
 
             log = log._append(tmp, ignore_index=True)
             log.to_csv('../trained_models/SSL/{}_{}/{}/{}_{}_{}_batchsize_{}.csv'.format(args.dataset, args.model_name, timestamp, args.model_name,
@@ -637,21 +636,12 @@ def main():
             tmp = pd.Series([
                 epoch,
                 train_log['lr'],
-                train_log['loss'],
-                train_log['ContrastiveLoss'],
-                train_log['tot_loss'],
-                train_log['dice_1'],
-                train_log['dice_2'],
-                # train_log['HD95'],
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-            ], index=['epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2',
-                      'val_loss', 'val_ContrastiveLoss','val_tot_loss', 'val_iou', 'val_dice_1', 'val_dice_2', 'HD95_avg'])
+                train_log['loss'].cpu().item(),
+                train_log['ContrastiveLoss'].cpu().item(),
+                train_log['tot_loss'].cpu().item(),
+                train_log['dice_1'].cpu().item(),
+                train_log['dice_2'].cpu().item(),
+            ], index=['epoch', 'lr', 'loss', 'ContrastiveLoss', 'tot_loss', 'dice_1', 'dice_2'])
 
             log = log._append(tmp, ignore_index=True)
             log.to_csv('../trained_models/SSL/{}_{}/{}/{}_{}_{}_batchsize_{}.csv'.format(args.dataset, args.model_name, timestamp,
